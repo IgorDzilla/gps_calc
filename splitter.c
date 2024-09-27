@@ -1,16 +1,34 @@
-#include <assert.h>
-#include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+//////////////////////
+// AUXILLARY FUNCTIONS
+//////////////////////
+
+#define FILE_NAME "splitter.c"
+
+// this function may appear in other files as well. As it's easier to copy it
+// than make a special file with it
+void err_print(char *src, char *msg) {
+  fprintf(stderr, "SOURCE\t%s - %s\n", FILE_NAME, src);
+  fprintf(stderr, "ERROR\t%s\n", msg);
+}
+
+/*
+ * Gets a substring from a string at given indeces
+ * Return value: a new string or NULL in case of failure
+ */
 char *get_substr(const char *string, size_t first, size_t last) {
-  assert(first <= last && last <= strlen(string));
+  if (first >= last || last >= strlen(string)) {
+    err_print("get_substr()", "indeces out of bounds");
+    return NULL;
+  }
 
   size_t substr_size = last - first;
   char *substr = (char *)malloc(sizeof(char) * (substr_size + 1));
   if (!substr) {
-    warn("get_substr() - memory allocation error");
+    err_print("get_substr()", "memory allocation failed");
     return NULL;
   }
 
@@ -22,7 +40,16 @@ char *get_substr(const char *string, size_t first, size_t last) {
   return substr;
 }
 
-void emergency_free_split(char **splits, size_t num);
+// in case  of failure will free all allocated memory
+void emergency_free_split(char **splits, size_t num) {
+  for (size_t i = 0; i < num; i++)
+    free(splits[i]);
+  free(splits);
+}
+
+/////////////////////
+/// PRIMARY FUNCTIONS
+/////////////////////
 
 char **strsplit(const char *string, const char sep) {
   size_t string_size = strlen(string);
@@ -36,7 +63,7 @@ char **strsplit(const char *string, const char sep) {
 
   char **substrs = (char **)malloc(sizeof(char *) * (substr_count + 1));
   if (!substrs) {
-    warn("strplit() - memory allocation error");
+    err_print("substr()", "memory allocation failed");
     return NULL;
   }
 
@@ -48,9 +75,8 @@ char **strsplit(const char *string, const char sep) {
       char *substr = get_substr(string, first, last);
 
       if (!substr) {
-        warn("strsplit() - get_substr() function failed");
+        err_print("strsplit()", "get_susbstr() function failed");
         emergency_free_split(substrs, arr_idx);
-        fprintf(stderr, "strsplit() - get_substr function failed\n");
         return NULL;
       }
 
@@ -66,13 +92,6 @@ char **strsplit(const char *string, const char sep) {
 
 void free_split(char **splits) {
   for (size_t i = 0; splits[i]; i++)
-    free(splits[i]);
-  free(splits);
-}
-
-// in case  of failure will free all allocated memory
-void emergency_free_split(char **splits, size_t num) {
-  for (size_t i = 0; i < num; i++)
     free(splits[i]);
   free(splits);
 }
@@ -101,9 +120,8 @@ char **split_pop(char ***split) {
 
     char **split_upd = realloc(*split, sizeof(char *) * size);
     if (!split_upd) {
-      warn("split_pop() - memory reallcation error\n");
+      err_print("split_pop()", "memory allocation failed");
       free_split(*split); // in case of failure kill the split
-
       return NULL;
     }
 
@@ -113,7 +131,7 @@ char **split_pop(char ***split) {
   return *split;
 }
 
-/*
+/* USAGE EXAMPLES (assert.h is required)
 void test_strsplit() {
   // Test case 1: Basic split
   char *test1 = "Moscow;;;;;23;;34";

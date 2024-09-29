@@ -11,11 +11,14 @@
  * */
 char **strsplit(const char *string, const char sep);
 
+/*
+ * Frees all the memory allocated for the split
+ */
 void free_split(char **splits);
 
 /*
  * Returns number of strings in split. NULL-terminator is not counted.
- * */
+ */
 size_t splitsize(char **splits);
 
 char **split_pop(char ***split);

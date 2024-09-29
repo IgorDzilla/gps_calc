@@ -1,3 +1,5 @@
+#include "auxillary.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,29 +8,20 @@
 // AUXILLARY FUNCTIONS
 //////////////////////
 
-#define FILE_NAME "splitter.c"
-
-// this function may appear in other files as well. As it's easier to copy it
-// than make a special file with it
-void err_print(char *src, char *msg) {
-  fprintf(stderr, "SOURCE\t%s - %s\n", FILE_NAME, src);
-  fprintf(stderr, "ERROR\t%s\n", msg);
-}
-
 /*
  * Gets a substring from a string at given indeces
  * Return value: a new string or NULL in case of failure
  */
 char *get_substr(const char *string, size_t first, size_t last) {
-  if (first >= last || last >= strlen(string)) {
-    err_print("get_substr()", "indeces out of bounds");
+  if (first > last || last > strlen(string)) {
+    err_print(__FILE__, "get_substr()", "indeces out of bounds");
     return NULL;
   }
 
   size_t substr_size = last - first;
   char *substr = (char *)malloc(sizeof(char) * (substr_size + 1));
   if (!substr) {
-    err_print("get_substr()", "memory allocation failed");
+    err_print(__FILE__, "get_substr()", "memory allocation failed");
     return NULL;
   }
 
@@ -63,7 +56,7 @@ char **strsplit(const char *string, const char sep) {
 
   char **substrs = (char **)malloc(sizeof(char *) * (substr_count + 1));
   if (!substrs) {
-    err_print("substr()", "memory allocation failed");
+    err_print(__FILE__, "substr()", "memory allocation failed");
     return NULL;
   }
 
@@ -75,7 +68,7 @@ char **strsplit(const char *string, const char sep) {
       char *substr = get_substr(string, first, last);
 
       if (!substr) {
-        err_print("strsplit()", "get_susbstr() function failed");
+        err_print(__FILE__, "strsplit()", "get_susbstr() function failed");
         emergency_free_split(substrs, arr_idx);
         return NULL;
       }
@@ -120,7 +113,7 @@ char **split_pop(char ***split) {
 
     char **split_upd = realloc(*split, sizeof(char *) * size);
     if (!split_upd) {
-      err_print("split_pop()", "memory allocation failed");
+      err_print(__FILE__, "split_pop()", "memory allocation failed");
       free_split(*split); // in case of failure kill the split
       return NULL;
     }

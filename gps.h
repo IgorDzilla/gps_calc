@@ -63,8 +63,10 @@ long double distance(Coord *point1, Coord *point2);
 /*Converts degrees value into radians*/
 long double degrees2rads(long double degrees);
 
+/*Converts Angle struct into degrees*/
 long double convert_to_degrees(Angle *angle);
 
+/*Calculates distance between two points using Vincenty formula*/
 long double vincenty(Coord *point1, Coord *point2);
 
 #endif // GPS_H

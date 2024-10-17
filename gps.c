@@ -11,9 +11,6 @@
 
 #define SIZE_OF_COORD 2
 
-// this function may appear in other files as well. As it's easier to copy it
-// than make a special file with it
-
 /*
  * Expects string in format: dregrees:mins:secs
  *                              ^^^    ^^   ^^

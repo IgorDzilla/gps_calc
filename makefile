@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -std=c99 -g
 
-gps: gps.o splitter.o auxillary.o main.o
-	$(CC) $(CFLAGS) -o gps gps.o splitter.o auxillary.o main.o
+gps_calc: gps.o splitter.o auxillary.o main.o
+	$(CC) $(CFLAGS) -o gps_calc gps.o splitter.o auxillary.o main.o
 
 gps.o: gps.c splitter.h auxillary.h
 	$(CC) $(CFLAGS) -c gps.c

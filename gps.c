@@ -2,6 +2,8 @@
 #include "auxillary.h"
 #include "splitter.h"
 
+#include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,12 +88,13 @@ void free_coord(Coord *coord) {
 }
 
 int coord_arr_push_back(Coord ***coord_arr_ptr, size_t *size, Coord *new_coord);
+void free_coord_arr(Coord **arr, size_t size);
 
-Coord **read_file(char *file_name) {
+int read_file(const char *file_name, Coord ***arr) {
   FILE *file = fopen(file_name, "r");
   if (!file) {
     err_print(__FILE__, "read_file()", "opening file failed");
-    return NULL;
+    return -1;
   }
 
   // read the file into string
@@ -105,35 +108,29 @@ Coord **read_file(char *file_name) {
   buffer[file_size] = '\0';
   fclose(file);
 
-  printf("FILE CONTENTS\n%s", buffer);
   // split the string
-  char **splits = strsplit(buffer, '\n');
-  if (!splits) {
+  char **lines = strsplit(buffer, '\n');
+  if (!lines) {
     err_print(__FILE__, "read_file()", "strsplit() function failed");
-    return NULL;
+    return -1;
   }
 
-  split_pop(&splits);
+  split_pop(&lines);
 
-  Coord **coords_arr = NULL; // create holder of coords
   size_t size = 0;
 
-  for (size_t i = 0; splits[i]; i++) {
-    char **strings = strsplit(splits[i], ',');
+  for (size_t i = 0; lines[i]; i++) {
+    char **strings = strsplit(lines[i], ',');
 
-    ///////////////
-    for (size_t p = 0; strings[p]; p++)
-      printf("->%s\n", strings[p]);
-    /////////////
     // self termination in case of failure
     if (!strings) {
       err_print(__FILE__, "read_file()", "strsplit() funciton failed");
       // clean up
       for (size_t idx = 0; idx < size; idx++)
-        free_coord(coords_arr[i]);
-      free_split(splits);
+        free_coord(*arr[i]);
+      free_split(lines);
       free_split(strings);
-      return NULL;
+      return -1;
     }
 
     size_t s;
@@ -142,51 +139,36 @@ Coord **read_file(char *file_name) {
       err_print(__FILE__, "read_file()",
                 strcat("incorrect data. Should be two angles, got",
                        sprintf(help_str, "%zu", s)));
-      return NULL;
+      return -1;
     }
 
-    printf("FINE 1\n");
     Coord *new_coord = read_coords(strings[0], strings[1]);
     if (!new_coord) {
       err_print(__FILE__, "read_file()", "read_coords() function failed");
       // in case of failure clean up
       for (size_t idx = 0; idx < size; idx++)
-        free_coord(coords_arr[i]);
-      free(coords_arr);
-      free_split(splits);
+        free_coord(*arr[i]);
+      free_split(lines);
       free_split(strings);
+      return -1;
     }
 
-    printf("LATITUDE: %d:%d:%Lf\t", new_coord->latitude->degrees,
-           new_coord->latitude->mins, new_coord->latitude->secs);
-    printf("LONGTITUDE: %d:%d:%Lf\n", new_coord->longtitude->degrees,
-           new_coord->longtitude->mins, new_coord->longtitude->secs);
-
-    printf("FINE 2\n");
-    if (!coord_arr_push_back(&coords_arr, &size, new_coord)) {
+    if (coord_arr_push_back(arr, &size, new_coord)) {
       err_print(__FILE__, "read_file()",
                 "coord_arr_push_back() function failed");
       for (size_t idx = 0; idx < size; idx++)
-        free_coord(coords_arr[idx]);
-      free(coords_arr);
-      free_split(splits);
+        free_coord(*arr[idx]);
+      free_split(lines);
       free_split(strings);
+      return 0;
     }
 
     free_split(strings);
   }
 
-  free(coords_arr);
+  free_split(lines);
 
-  printf("FINE 3\n");
-  if (!coord_arr_push_back(&coords_arr, &size, NULL)) {
-    err_print(__FILE__, "read_file()", "coord_arr_push_back() function failed");
-    for (size_t idx = 0; idx < size; idx++)
-      free_coord(coords_arr[idx]);
-    return NULL;
-  }
-
-  return coords_arr;
+  return size;
 }
 
 int coord_arr_push_back(Coord ***coord_arr_ptr, size_t *size,
@@ -195,11 +177,87 @@ int coord_arr_push_back(Coord ***coord_arr_ptr, size_t *size,
       (Coord **)realloc(*coord_arr_ptr, sizeof(Coord *) * (*size + 1));
   if (!new_coords_arr) {
     err_print(__FILE__, "coord_arr_push_back()", "memory reallocation failed");
-    return 0; //-112654365171829;
+    return ENOMEM; //-112654365171829;
   }
 
-  new_coords_arr[*size++] = new_coord;
+  new_coords_arr[*size] = new_coord;
+  *size += 1;
   *coord_arr_ptr = new_coords_arr;
 
-  return 1;
+  return 0;
+}
+
+long double convert_to_degrees(Angle *angle) {
+  long double result = (long double)angle->degrees;
+
+  // convert minutes to degrees
+  result += (long double)angle->mins / 60.0;
+
+  // convert seconds to degrees
+  result += angle->secs / 3600.0;
+
+  return result;
+}
+
+long double degrees2rads(long double degrees) { return degrees * M_PI / 180; }
+
+void free_coord_arr(Coord **arr, size_t size) {
+  for (size_t i = 0; i < size; i++)
+    free_coord(arr[i]);
+  free(arr);
+}
+
+long double vincenty(Coord *point1, Coord *point2) {
+  long double a = AXA;
+  long double f = ALFAZ;
+  double b = AXB;
+
+  // variable initilization
+  long double u1, u2, lon, lambda = 0., precision, sin_sigma, cos_sigma, sigma,
+                           sin_alpha, cos_sq_alpha, cos2sigma;
+  long double A, B, C, lambda_precise, delta_sig, distance, usq;
+
+  // convert to radians
+  long double lat1 = degrees2rads(convert_to_degrees(point1->latitude));
+  long double long1 = degrees2rads(convert_to_degrees(point1->longtitude));
+  long double lat2 = degrees2rads(convert_to_degrees(point2->latitude));
+  long double long2 = degrees2rads(convert_to_degrees(point2->longtitude));
+
+  u1 = atan((1 - f) * tan(lat2));
+  u2 = atan((1 - f) * tan(lat1));
+
+  lon = long1 - long2;
+  lambda = lon;
+  precision = 10e-12; // pow(10., -12.); // iteration tolerance
+
+  while (fabsl(lambda_precise - lambda) >= precision) {
+    sin_sigma =
+        sqrt(pow((cos(u2) * sin(lambda)), 2.) +
+             pow(cos(u1) * sin(u2) - sin(u1) * cos(u2) * cos(lambda), 2.));
+    cos_sigma = sin(u1) * sin(u2) + cos(u1) * cos(u2) * cos(lambda);
+    sigma = atan(sin_sigma / cos_sigma);
+    sin_alpha = (cos(u1) * cos(u2) * sin(lambda)) / sin_sigma;
+    cos_sq_alpha = 1 - pow(sin_alpha, 2.);
+    cos2sigma = cos_sigma - ((2 * sin(u1) * sin(u2)) / cos_sq_alpha);
+    C = (f / 16) * cos_sq_alpha * (4 + f * (4 - 3 * cos_sq_alpha));
+    lambda_precise = lambda;
+    lambda =
+        lon + (1 - C) * f * sin_alpha *
+                  (sigma + C * sin_sigma *
+                               (cos2sigma +
+                                C * cos_sigma * (2 * pow(cos2sigma, 2.) - 1)));
+  }
+
+  usq = cos_sq_alpha * ((pow(a, 2.) - pow(b, 2.)) / pow(b, 2.));
+  A = 1 + (usq / 16384) * (4096 + usq * (-768 + usq * (320 - 175 * usq)));
+  B = (usq / 1024) * (256 + usq * (-128 + usq * (74 - 47 * usq)));
+  delta_sig = B * sin_sigma *
+              (cos2sigma +
+               0.25 * B *
+                   (cos_sigma * (-1 + 2 * pow(cos2sigma, 2.)) -
+                    (1.0L / 6) * B * cos2sigma * (-3 + 4 * pow(sin_sigma, 2.)) *
+                        (-3 + 4 * pow(cos2sigma, 2.))));
+  distance = b * A * (sigma - delta_sig);
+
+  return distance;
 }

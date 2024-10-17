@@ -1,0 +1,122 @@
+#include "gps.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+void print(Coord *coord) {
+  printf("%15s:%20d:%d:%Lf", "in coords fmt", coord->latitude->degrees,
+         coord->latitude->mins, coord->latitude->secs);
+  printf("%20d:%d:%Lf\n", coord->longtitude->degrees, coord->longtitude->mins,
+         coord->longtitude->secs);
+}
+
+int vinc(double latp, double latc, double longp, double longc) {
+  double req = 6378137.0;          // Radius at equator
+  double flat = 1 / 298.257223563; // flattenig of earth
+  double rpol = (1 - flat) * req;
+
+  double u1, u2, lon, lam, tol, diff, sin_sigma, cos_sigma, sigma, sin_alpha,
+      cos_sq_alpha, cos2sigma;
+  double A, B, C, lam_pre, delta_sig, dis, azi1, usq;
+
+  // convert to radians
+  latp = M_PI * latp / 180.0;
+  latc = M_PI * latc / 180.0;
+  longp = M_PI * longp / 180.0;
+  longc = M_PI * longc / 180.0;
+
+  u1 = atan((1 - flat) * tan(latc));
+  u2 = atan((1 - flat) * tan(latp));
+
+  lon = longp - longc;
+  lam = lon;
+  tol = pow(10., -12.); // iteration tolerance
+  diff = 1.;
+
+  while (fabs(diff) > tol) {
+    sin_sigma = sqrt(pow((cos(u2) * sin(lam)), 2.) +
+                     pow(cos(u1) * sin(u2) - sin(u1) * cos(u2) * cos(lam), 2.));
+    cos_sigma = sin(u1) * sin(u2) + cos(u1) * cos(u2) * cos(lam);
+    sigma = atan(sin_sigma / cos_sigma);
+    sin_alpha = (cos(u1) * cos(u2) * sin(lam)) / sin_sigma;
+    cos_sq_alpha = 1 - pow(sin_alpha, 2.);
+    cos2sigma = cos_sigma - ((2 * sin(u1) * sin(u2)) / cos_sq_alpha);
+    C = (flat / 16) * cos_sq_alpha * (4 + flat * (4 - 3 * cos_sq_alpha));
+    lam_pre = lam;
+    lam = lon +
+          (1 - C) * flat * sin_alpha *
+              (sigma +
+               C * sin_sigma *
+                   (cos2sigma + C * cos_sigma * (2 * pow(cos2sigma, 2.) - 1)));
+    diff = fabs(lam_pre - lam);
+  }
+
+  usq = cos_sq_alpha * ((pow(req, 2.) - pow(rpol, 2.)) / pow(rpol, 2.));
+  A = 1 + (usq / 16384) * (4096 + usq * (-768 + usq * (320 - 175 * usq)));
+  B = (usq / 1024) * (256 + usq * (-128 + usq * (74 - 47 * usq)));
+  delta_sig = B * sin_sigma *
+              (cos2sigma +
+               0.25 * B *
+                   (cos_sigma * (-1 + 2 * pow(cos2sigma, 2.)) -
+                    (1.0 / 6) * B * cos2sigma * (-3 + 4 * pow(sin_sigma, 2.)) *
+                        (-3 + 4 * pow(cos2sigma, 2.))));
+  dis = rpol * A * (sigma - delta_sig);
+  azi1 = atan2((cos(u2) * sin(lam)),
+               (cos(u1) * sin(u2) - sin(u1) * cos(u2) * cos(lam)));
+
+  return dis;
+}
+
+int main(void) {
+  EarthParams earth = EARTH_PARAMS;
+  printf("ALFAZ\t%.6Lf meters\n", earth.alfaz);
+  printf("AXA\t%.6Lf meters\n", earth.axa);
+  printf("AXB\t%.6Lf meters\n", earth.axb);
+
+  char *input_string = "37:12:34.567";
+  Angle *angle = read_angle(input_string);
+
+  if (angle) {
+    printf("Degrees: %d\n", angle->degrees);
+    printf("Minutes: %d\n", angle->mins);
+    printf("Seconds: %.3Lf\n", angle->secs);
+    long double degrees = convert_to_degrees(angle);
+
+    printf("Angle in degrees: %Lf\n", degrees);
+    printf("Angle in radians: %Lf\n", degrees2rads(degrees));
+
+    free(angle);
+  } else {
+    printf("angle parsing failed. terminating...\n");
+    exit(EXIT_FAILURE);
+  }
+
+  Coord **coords = NULL;
+  int size = read_file("data.gcrd", &coords);
+
+  for (size_t i = 0; i < size; i++) {
+    printf("coords %zu\n", i);
+    print(coords[i]);
+    long double lat = convert_to_degrees(coords[i]->latitude);
+    long double lon = convert_to_degrees(coords[i]->longtitude);
+    printf("%15s:\t%20Lf%20Lf\n", "in dgrees fmt", lat, lon);
+    printf("%15s:\t%20Lf%20Lf\n", "in rads fmt", degrees2rads(lat),
+           degrees2rads(lon));
+  }
+
+  long double lat1 = convert_to_degrees(coords[0]->latitude);
+  long double lon1 = convert_to_degrees(coords[0]->longtitude);
+  long double lon2 = convert_to_degrees(coords[1]->longtitude);
+  long double lon2 = convert_to_degrees(coords[1]->longtitude);
+
+      printf("Distance: %Lf meters\n",
+             vinc(convert_to_degrees(coords[0]->latitude),
+                  convert_to_degrees(coords[1]->latitude),
+                  convert_to_degrees(coords[0]->longtitude),
+                  convert_to_degrees(coords[1]->longtitude)));
+  printf("Distance: %Lf meters\n", distance(coords[0], coords[1]));
+
+  free_coord_arr(coords, size);
+
+  return 0;
+}
